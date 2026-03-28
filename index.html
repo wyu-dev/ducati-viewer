@@ -449,57 +449,230 @@ function resize() {
 
 // ─── Scene & Camera ─────────────────────────────────────────
 const scene = new THREE.Scene();
-scene.fog = new THREE.FogExp2(0x080809, 0.04);
 
 const camera = new THREE.PerspectiveCamera(45, 1, 0.01, 100);
 camera.position.set(3, 1.2, 3);
 resize();
 
-// ─── Lights ─────────────────────────────────────────────────
-const ambient = new THREE.AmbientLight(0xffffff, 0.4);
+// ─── Lights (Malaysia siang terik) ──────────────────────────
+const ambient = new THREE.AmbientLight(0xd4eeff, 0.8);
 scene.add(ambient);
 
-const key = new THREE.DirectionalLight(0xfff5f0, 2.5);
-key.position.set(5, 8, 5);
+const key = new THREE.DirectionalLight(0xfff8e8, 3.0);
+key.position.set(30, 28, -50);
 key.castShadow = true;
 key.shadow.mapSize.set(2048, 2048);
 key.shadow.camera.near = 0.5;
-key.shadow.camera.far = 30;
-key.shadow.camera.left = -5;
-key.shadow.camera.right = 5;
-key.shadow.camera.top = 5;
-key.shadow.camera.bottom = -5;
+key.shadow.camera.far = 60;
+key.shadow.camera.left = -8;
+key.shadow.camera.right = 8;
+key.shadow.camera.top = 8;
+key.shadow.camera.bottom = -8;
 scene.add(key);
 
-const fill = new THREE.DirectionalLight(0xc0d8ff, 0.8);
-fill.position.set(-5, 3, -3);
+const fill = new THREE.DirectionalLight(0xc8deff, 0.6);
+fill.position.set(-10, 5, 10);
 scene.add(fill);
 
-const rim = new THREE.PointLight(0xe8001d, 2, 8);
+const rim = new THREE.PointLight(0xff6633, 1.5, 10);
 rim.position.set(-3, 2, -2);
 scene.add(rim);
 
-const ground_light = new THREE.PointLight(0x1a0005, 1, 5);
-ground_light.position.set(0, -1, 0);
-scene.add(ground_light);
+// ─── Sky (Malaysia terik) ────────────────────────────────────
+scene.fog = new THREE.Fog(0xc8e8ff, 30, 120);
+renderer.setClearColor(0x87ceeb);
 
-// ─── Ground / Reflection plane ───────────────────────────────
-const groundGeo = new THREE.PlaneGeometry(20, 20);
-const groundMat = new THREE.MeshStandardMaterial({
-  color: 0x0a0a0d,
-  roughness: 0.1,
-  metalness: 0.8,
+// Sky dome guna ShaderMaterial
+const skyGeo = new THREE.SphereGeometry(80, 32, 16);
+const skyMat = new THREE.ShaderMaterial({
+  side: THREE.BackSide,
+  uniforms: {
+    topColor: { value: new THREE.Color(0x1565c0) },
+    bottomColor: { value: new THREE.Color(0xd4eeff) },
+    horizon: { value: 0.3 },
+    exponent: { value: 0.5 }
+  },
+  vertexShader: `
+    varying vec3 vPos;
+    void main() { vPos = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }
+  `,
+  fragmentShader: `
+    uniform vec3 topColor, bottomColor;
+    uniform float horizon, exponent;
+    varying vec3 vPos;
+    void main() {
+      float h = normalize(vPos).y;
+      float t = max(pow(max(h - horizon, 0.0) / (1.0 - horizon), exponent), 0.0);
+      gl_FragColor = vec4(mix(bottomColor, topColor, t), 1.0);
+    }
+  `
 });
-const ground = new THREE.Mesh(groundGeo, groundMat);
-ground.rotation.x = -Math.PI / 2;
-ground.position.y = -0.82;
-ground.receiveShadow = true;
-scene.add(ground);
+const sky = new THREE.Mesh(skyGeo, skyMat);
+scene.add(sky);
 
-// Grid lines
-const grid = new THREE.GridHelper(20, 30, 0x1a0005, 0x120003);
-grid.position.y = -0.81;
-scene.add(grid);
+// Sun glow
+const sunGeo = new THREE.SphereGeometry(1.5, 16, 16);
+const sunMat = new THREE.MeshBasicMaterial({ color: 0xfffde0 });
+const sun = new THREE.Mesh(sunGeo, sunMat);
+sun.position.set(30, 28, -50);
+scene.add(sun);
+
+// Sun halo (bigger, transparent)
+const haloGeo = new THREE.SphereGeometry(3.5, 16, 16);
+const haloMat = new THREE.MeshBasicMaterial({ color: 0xfff5a0, transparent: true, opacity: 0.15 });
+const halo = new THREE.Mesh(haloGeo, haloMat);
+halo.position.copy(sun.position);
+scene.add(halo);
+
+// ─── Sepang Track Scene ──────────────────────────────────────
+
+// Main asphalt surface — broad flat track section
+const trackGeo = new THREE.PlaneGeometry(12, 60);
+const trackMat = new THREE.MeshStandardMaterial({
+  color: 0x2a2a2a,
+  roughness: 0.92,
+  metalness: 0.05,
+});
+const track = new THREE.Mesh(trackGeo, trackMat);
+track.rotation.x = -Math.PI / 2;
+track.position.set(0, -0.82, 0);
+track.receiveShadow = true;
+scene.add(track);
+
+// Track kerb — merah/putih di tepi kiri
+function makeKerb(xPos, zStart, zEnd) {
+  const kLen = zEnd - zStart;
+  const seg = Math.floor(kLen / 1.2);
+  for (let i = 0; i < seg; i++) {
+    const isRed = i % 2 === 0;
+    const kGeo = new THREE.BoxGeometry(0.6, 0.06, 1.1);
+    const kMat = new THREE.MeshStandardMaterial({
+      color: isRed ? 0xdd2222 : 0xeeeeee,
+      roughness: 0.7
+    });
+    const k = new THREE.Mesh(kGeo, kMat);
+    k.position.set(xPos, -0.79, zStart + i * 1.2 - kLen / 2);
+    k.receiveShadow = true;
+    scene.add(k);
+  }
+}
+makeKerb(-6.3, -25, 25);
+makeKerb(6.3, -25, 25);
+
+// Garisan putih tepi track
+function makeLine(x, zLen, w) {
+  const lGeo = new THREE.PlaneGeometry(w, zLen);
+  const lMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.8 });
+  const l = new THREE.Mesh(lGeo, lMat);
+  l.rotation.x = -Math.PI / 2;
+  l.position.set(x, -0.815, 0);
+  scene.add(l);
+}
+makeLine(-5.5, 50, 0.12);
+makeLine(5.5, 50, 0.12);
+
+// Garisan putih tengah (dash)
+for (let z = -22; z < 22; z += 3.5) {
+  const dGeo = new THREE.PlaneGeometry(0.1, 2);
+  const dMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.8 });
+  const d = new THREE.Mesh(dGeo, dMat);
+  d.rotation.x = -Math.PI / 2;
+  d.position.set(0, -0.814, z);
+  scene.add(d);
+}
+
+// Starting grid boxes
+for (let i = 0; i < 6; i++) {
+  const side = i % 2 === 0 ? -1.5 : 1.5;
+  const z = -8 + i * 2.2;
+  const gGeo = new THREE.PlaneGeometry(1.8, 1.0);
+  const gMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.8 });
+  const g = new THREE.Mesh(gGeo, gMat);
+  g.rotation.x = -Math.PI / 2;
+  g.position.set(side, -0.813, z);
+  scene.add(g);
+
+  // Grid number lines
+  const n1 = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 0.06), gMat);
+  n1.rotation.x = -Math.PI / 2;
+  n1.position.set(side, -0.812, z - 0.3);
+  scene.add(n1);
+  const n2 = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 0.06), gMat);
+  n2.rotation.x = -Math.PI / 2;
+  n2.position.set(side, -0.812, z + 0.3);
+  scene.add(n2);
+}
+
+// Run-off area (gravel/grass tepi luar kerb)
+const runoffGeo = new THREE.PlaneGeometry(40, 80);
+const runoffMat = new THREE.MeshStandardMaterial({ color: 0x4a7c40, roughness: 1.0 });
+const runoff = new THREE.Mesh(runoffGeo, runoffMat);
+runoff.rotation.x = -Math.PI / 2;
+runoff.position.set(0, -0.83, 0);
+runoff.receiveShadow = true;
+scene.add(runoff);
+
+// Grandstand silhouette (jauh di background)
+function makeGrandstand(x, z, w, h) {
+  const gsGeo = new THREE.BoxGeometry(w, h, 1.5);
+  const gsMat = new THREE.MeshStandardMaterial({ color: 0x888899, roughness: 1.0 });
+  const gs = new THREE.Mesh(gsGeo, gsMat);
+  gs.position.set(x, -0.82 + h / 2, z);
+  scene.add(gs);
+  // Roof
+  const roofGeo = new THREE.BoxGeometry(w + 1, 0.3, 3);
+  const roofMat = new THREE.MeshStandardMaterial({ color: 0xaaaacc, roughness: 0.8 });
+  const roof = new THREE.Mesh(roofGeo, roofMat);
+  roof.position.set(x, -0.82 + h + 0.15, z - 0.5);
+  scene.add(roof);
+}
+makeGrandstand(-22, -10, 18, 5);
+makeGrandstand(-22, 10, 14, 4);
+makeGrandstand(22, 0, 20, 6);
+
+// Barrier armco (luar kerb)
+function makeArmco(xPos, zLen) {
+  const aGeo = new THREE.BoxGeometry(0.15, 0.5, zLen);
+  const aMat = new THREE.MeshStandardMaterial({ color: 0xcccccc, roughness: 0.3, metalness: 0.7 });
+  const a = new THREE.Mesh(aGeo, aMat);
+  a.position.set(xPos, -0.57, 0);
+  scene.add(a);
+}
+makeArmco(-7.2, 52);
+makeArmco(7.2, 52);
+
+// Tyre barrier stack (merah, sebelah grandstand)
+function makeTyreStack(x, z) {
+  const colors = [0xcc2222, 0x222222, 0xcc2222];
+  colors.forEach((c, i) => {
+    const tGeo = new THREE.CylinderGeometry(0.28, 0.28, 0.25, 10);
+    const tMat = new THREE.MeshStandardMaterial({ color: c, roughness: 0.9 });
+    const t = new THREE.Mesh(tGeo, tMat);
+    t.rotation.z = Math.PI / 2;
+    t.position.set(x, -0.82 + 0.28 + i * 0.26, z);
+    scene.add(t);
+  });
+}
+for (let z = -12; z <= 12; z += 3) makeTyreStack(-7.8, z);
+
+// Lampu litar (pole + light)
+function makeLightPole(x, z) {
+  const poleGeo = new THREE.CylinderGeometry(0.05, 0.07, 6, 8);
+  const poleMat = new THREE.MeshStandardMaterial({ color: 0x888888, metalness: 0.8, roughness: 0.3 });
+  const pole = new THREE.Mesh(poleGeo, poleMat);
+  pole.position.set(x, -0.82 + 3, z);
+  scene.add(pole);
+  const lightGeo = new THREE.BoxGeometry(0.6, 0.15, 0.3);
+  const lightMat = new THREE.MeshStandardMaterial({ color: 0xffffcc, emissive: 0xffff88, emissiveIntensity: 0.5 });
+  const light = new THREE.Mesh(lightGeo, lightMat);
+  light.position.set(x, -0.82 + 6.1, z);
+  scene.add(light);
+}
+makeLightPole(-8.5, -15);
+makeLightPole(-8.5, 0);
+makeLightPole(-8.5, 15);
+makeLightPole(8.5, -10);
+makeLightPole(8.5, 8);
 
 // ─── Load GLB ───────────────────────────────────────────────
 // GLTFLoader via CDN
@@ -813,8 +986,8 @@ function loop() {
     camera.position.z = radius * Math.cos(rotY) * Math.cos(rotX);
     camera.lookAt(0, 0.2, 0);
 
-    rim.position.x = Math.sin(t * 0.4) * 4;
-    rim.position.z = Math.cos(t * 0.4) * 4;
+    rim.position.x = Math.sin(t * 0.4) * 5;
+    rim.position.z = Math.cos(t * 0.4) * 5;
 
     checkHover();
     renderer.render(scene, camera);
