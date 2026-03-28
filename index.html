@@ -177,6 +177,66 @@
 
   .btn-vr svg { width: 16px; height: 16px; fill: currentColor; }
 
+  /* VR overlay controls */
+  #vr-controls {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 999;
+    pointer-events: none;
+  }
+  #vr-controls.active { display: block; }
+
+  .vr-btn-group {
+    position: absolute;
+    bottom: 40px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 12px;
+    pointer-events: all;
+  }
+
+  .vr-btn {
+    background: rgba(232,0,29,0.85);
+    color: white;
+    border: none;
+    width: 64px; height: 64px;
+    border-radius: 50%;
+    font-size: 24px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+
+  .vr-btn-exit {
+    background: rgba(30,30,35,0.9);
+    border: 1px solid #e8001d;
+    color: #e8001d;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 1px;
+    width: 64px; height: 64px;
+    border-radius: 50%;
+  }
+
+  .vr-hint {
+    position: absolute;
+    top: 30px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px;
+    color: rgba(255,255,255,0.5);
+    letter-spacing: 2px;
+    text-align: center;
+    white-space: nowrap;
+    pointer-events: none;
+  }
+
   /* Part label */
   #part-label {
     position: absolute;
@@ -358,6 +418,15 @@
   </div>
 </div>
 
+<div id="vr-controls">
+  <div class="vr-hint">PUTAR PHONE UNTUK LIHAT SEKELILING</div>
+  <div class="vr-btn-group">
+    <button class="vr-btn" id="vr-zoom-in" title="Dekat">+</button>
+    <button class="vr-btn vr-btn-exit" id="vr-exit">EXIT<br>VR</button>
+    <button class="vr-btn" id="vr-zoom-out" title="Jauh">−</button>
+  </div>
+</div>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 // ─── Renderer ───────────────────────────────────────────────
@@ -485,16 +554,10 @@ loaderScript.onload = () => {
       loading.style.opacity = '0';
       setTimeout(() => loading.style.display = 'none', 800);
 
-      // Check VR
-      if (navigator.xr) {
-        navigator.xr.isSessionSupported('immersive-vr').then(supported => {
-          if (supported) {
-            const vrBtn = document.getElementById('btn-vr');
-            vrBtn.disabled = false;
-            vrBtn.addEventListener('click', enterVR);
-          }
-        });
-      }
+      // Check VR support — guna gyro-based VR (works on any phone)
+      const vrBtn = document.getElementById('btn-vr');
+      vrBtn.disabled = false;
+      vrBtn.addEventListener('click', enterVR);
     },
     (progress) => {
       const pct = Math.round((progress.loaded / progress.total) * 100);
@@ -601,18 +664,99 @@ function checkHover() {
   }
 }
 
-// ─── VR ──────────────────────────────────────────────────────
-function enterVR() {
-  navigator.xr.requestSession('immersive-vr', {
-    optionalFeatures: ['local-floor', 'bounded-floor', 'hand-tracking']
-  }).then(session => {
-    renderer.xr.setSession(session);
-    document.getElementById('btn-vr').textContent = 'EXIT VR';
-    session.addEventListener('end', () => {
-      document.getElementById('btn-vr').textContent = 'ENTER VR';
-    });
+// ─── VR Mode ─────────────────────────────────────────────────
+let isVR = false;
+let vrModelDist = 2.5;  // jarak model dari camera dalam VR
+let vrModelGroup = null; // group yang akan diposisi depan camera dalam VR
+
+// Gyroscope untuk VR look-around
+let gyroEnabled = false;
+let gyroAlpha = 0, gyroBeta = 0, gyroGamma = 0;
+
+function requestGyro() {
+  if (typeof DeviceOrientationEvent !== 'undefined' &&
+      typeof DeviceOrientationEvent.requestPermission === 'function') {
+    // iOS 13+
+    DeviceOrientationEvent.requestPermission()
+      .then(state => { if (state === 'granted') listenGyro(); })
+      .catch(console.error);
+  } else {
+    listenGyro();
+  }
+}
+
+function listenGyro() {
+  window.addEventListener('deviceorientation', e => {
+    gyroAlpha = THREE.MathUtils.degToRad(e.alpha || 0);
+    gyroBeta  = THREE.MathUtils.degToRad(e.beta  || 0);
+    gyroGamma = THREE.MathUtils.degToRad(e.gamma || 0);
+    gyroEnabled = true;
   });
 }
+
+function enterVR() {
+  requestGyro();
+  isVR = true;
+
+  // Buat VR model group — wrap model supaya boleh position depan camera
+  if (model && !vrModelGroup) {
+    vrModelGroup = new THREE.Group();
+    scene.add(vrModelGroup);
+    vrModelGroup.add(model);
+  }
+
+  // Tukar UI
+  document.getElementById('btn-vr').style.display = 'none';
+  document.getElementById('vr-controls').classList.add('active');
+  document.querySelector('.hud').style.display = 'none';
+  document.querySelector('header').style.display = 'none';
+
+  // Lock landscape orientation kalau boleh
+  if (screen.orientation && screen.orientation.lock) {
+    screen.orientation.lock('landscape').catch(() => {});
+  }
+}
+
+function exitVR() {
+  isVR = false;
+  gyroEnabled = false;
+
+  // Kembalikan model ke scene root
+  if (vrModelGroup && model) {
+    scene.add(model);
+    vrModelGroup.remove(model);
+  }
+
+  document.getElementById('btn-vr').style.display = 'flex';
+  document.getElementById('vr-controls').classList.remove('active');
+  document.querySelector('.hud').style.display = 'flex';
+  document.querySelector('header').style.display = 'flex';
+
+  if (screen.orientation && screen.orientation.unlock) {
+    screen.orientation.unlock();
+  }
+
+  // Reset camera
+  camera.position.set(3, 1.2, 3);
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+}
+
+// VR zoom buttons
+document.getElementById('vr-zoom-in').addEventListener('click', () => {
+  vrModelDist = Math.max(0.8, vrModelDist - 0.3);
+});
+document.getElementById('vr-zoom-out').addEventListener('click', () => {
+  vrModelDist = Math.min(5, vrModelDist + 0.3);
+});
+document.getElementById('vr-exit').addEventListener('click', exitVR);
+
+// Euler untuk gyro
+const gyroEuler = new THREE.Euler();
+const gyroQuat = new THREE.Quaternion();
+const screenQuat = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5));
+const worldQuat = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0), Math.PI/2);
 
 // ─── Animate ─────────────────────────────────────────────────
 const clock = new THREE.Clock();
@@ -624,26 +768,78 @@ function animate() {
 function loop() {
   const t = clock.getElapsedTime();
 
-  // Auto spin
-  if (autoSpin) targetRotY += 0.002;
+  if (isVR) {
+    // ── VR Mode ──
+    // Gyro-based camera look
+    if (gyroEnabled) {
+      gyroEuler.set(gyroBeta, gyroAlpha, -gyroGamma, 'YXZ');
+      gyroQuat.setFromEuler(gyroEuler);
+      gyroQuat.multiply(screenQuat);
+      camera.quaternion.copy(worldQuat).multiply(gyroQuat);
+    }
 
-  // Smooth lerp
-  rotY += (targetRotY - rotY) * 0.07;
-  rotX += (targetRotX - rotX) * 0.07;
-  radius += (targetRadius - radius) * 0.07;
+    // Posisi model depan camera pada jarak vrModelDist
+    const dir = new THREE.Vector3(0, 0, -vrModelDist);
+    dir.applyQuaternion(camera.quaternion);
+    if (model) {
+      model.position.copy(camera.position).add(dir);
+      model.position.y -= 0.3; // sikit rendah dari pusat pandang
+      model.rotation.y = t * 0.3; // slow spin dalam VR
+    }
 
-  // Orbit camera
-  camera.position.x = radius * Math.sin(rotY) * Math.cos(rotX);
-  camera.position.y = radius * Math.sin(rotX) + 0.5;
-  camera.position.z = radius * Math.cos(rotY) * Math.cos(rotX);
-  camera.lookAt(0, 0.2, 0);
+    // Render stereoscopic (split screen)
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    renderer.setSize(w, h);
 
-  // Rim light animation
-  rim.position.x = Math.sin(t * 0.4) * 4;
-  rim.position.z = Math.cos(t * 0.4) * 4;
+    // Eye separation
+    const eyeSep = 0.032;
+    const leftCam = camera.clone();
+    const rightCam = camera.clone();
 
-  checkHover();
-  renderer.render(scene, camera);
+    const rightVec = new THREE.Vector3(eyeSep, 0, 0).applyQuaternion(camera.quaternion);
+    leftCam.position.sub(rightVec);
+    rightCam.position.add(rightVec);
+    leftCam.aspect = (w / 2) / h;
+    rightCam.aspect = (w / 2) / h;
+    leftCam.updateProjectionMatrix();
+    rightCam.updateProjectionMatrix();
+
+    // Kiri
+    renderer.setViewport(0, 0, w / 2, h);
+    renderer.setScissor(0, 0, w / 2, h);
+    renderer.setScissorTest(true);
+    renderer.render(scene, leftCam);
+
+    // Kanan
+    renderer.setViewport(w / 2, 0, w / 2, h);
+    renderer.setScissor(w / 2, 0, w / 2, h);
+    renderer.render(scene, rightCam);
+
+    renderer.setScissorTest(false);
+
+  } else {
+    // ── Normal Mode ──
+    renderer.setViewport(0, 0, window.innerWidth, window.innerHeight);
+    renderer.setScissorTest(false);
+
+    if (autoSpin) targetRotY += 0.002;
+
+    rotY += (targetRotY - rotY) * 0.07;
+    rotX += (targetRotX - rotX) * 0.07;
+    radius += (targetRadius - radius) * 0.07;
+
+    camera.position.x = radius * Math.sin(rotY) * Math.cos(rotX);
+    camera.position.y = radius * Math.sin(rotX) + 0.5;
+    camera.position.z = radius * Math.cos(rotY) * Math.cos(rotX);
+    camera.lookAt(0, 0.2, 0);
+
+    rim.position.x = Math.sin(t * 0.4) * 4;
+    rim.position.z = Math.cos(t * 0.4) * 4;
+
+    checkHover();
+    renderer.render(scene, camera);
+  }
 }
 
 window.addEventListener('resize', resize);
