@@ -787,36 +787,15 @@ function loop() {
       model.rotation.y = t * 0.3; // slow spin dalam VR
     }
 
-    // Render stereoscopic (split screen)
+    // Render single fullscreen view dengan gyro
     const w = window.innerWidth;
     const h = window.innerHeight;
     renderer.setSize(w, h);
-
-    // Eye separation
-    const eyeSep = 0.032;
-    const leftCam = camera.clone();
-    const rightCam = camera.clone();
-
-    const rightVec = new THREE.Vector3(eyeSep, 0, 0).applyQuaternion(camera.quaternion);
-    leftCam.position.sub(rightVec);
-    rightCam.position.add(rightVec);
-    leftCam.aspect = (w / 2) / h;
-    rightCam.aspect = (w / 2) / h;
-    leftCam.updateProjectionMatrix();
-    rightCam.updateProjectionMatrix();
-
-    // Kiri
-    renderer.setViewport(0, 0, w / 2, h);
-    renderer.setScissor(0, 0, w / 2, h);
-    renderer.setScissorTest(true);
-    renderer.render(scene, leftCam);
-
-    // Kanan
-    renderer.setViewport(w / 2, 0, w / 2, h);
-    renderer.setScissor(w / 2, 0, w / 2, h);
-    renderer.render(scene, rightCam);
-
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+    renderer.setViewport(0, 0, w, h);
     renderer.setScissorTest(false);
+    renderer.render(scene, camera);
 
   } else {
     // ── Normal Mode ──
