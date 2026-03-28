@@ -1,0 +1,653 @@
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ducati Panigale V4R — 3D Viewer</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@300;500;700&family=Share+Tech+Mono&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --red: #e8001d;
+    --red-dim: #8b0010;
+    --dark: #080809;
+    --surface: #0f0f12;
+    --surface2: #1a1a1f;
+    --text: #f0eee8;
+    --text-dim: #6b6b75;
+    --accent: #e8001d;
+  }
+
+  body {
+    background: var(--dark);
+    color: var(--text);
+    font-family: 'Rajdhani', sans-serif;
+    height: 100vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* Header */
+  header {
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    z-index: 10;
+    padding: 16px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: linear-gradient(to bottom, rgba(8,8,9,0.95), transparent);
+  }
+
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .brand-mark {
+    width: 32px; height: 32px;
+    background: var(--red);
+    clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+    display: flex; align-items: center; justify-content: center;
+  }
+
+  .brand-name {
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+  }
+
+  .brand-sub {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px;
+    color: var(--red);
+    letter-spacing: 2px;
+  }
+
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .tag {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px;
+    color: var(--text-dim);
+    letter-spacing: 1px;
+    padding: 4px 8px;
+    border: 1px solid #222;
+  }
+
+  /* Canvas */
+  #canvas {
+    width: 100%;
+    height: 100vh;
+    display: block;
+    cursor: grab;
+  }
+  #canvas:active { cursor: grabbing; }
+
+  /* Bottom HUD */
+  .hud {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    padding: 20px 24px;
+    background: linear-gradient(to top, rgba(8,8,9,0.98), transparent);
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    pointer-events: none;
+    z-index: 10;
+  }
+
+  .hud-left {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .hud-title {
+    font-size: 36px;
+    font-weight: 700;
+    letter-spacing: 4px;
+    text-transform: uppercase;
+    line-height: 1;
+  }
+
+  .hud-title span {
+    color: var(--red);
+  }
+
+  .hud-specs {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px;
+    color: var(--text-dim);
+    letter-spacing: 2px;
+    display: flex;
+    gap: 20px;
+  }
+
+  .hud-specs b {
+    color: var(--text);
+  }
+
+  .hud-right {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 8px;
+    pointer-events: all;
+  }
+
+  .controls-hint {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px;
+    color: var(--text-dim);
+    letter-spacing: 1px;
+    text-align: right;
+    line-height: 2;
+  }
+
+  .btn-vr {
+    background: var(--red);
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transition: background 0.2s;
+    clip-path: polygon(8px 0%, 100% 0%, calc(100% - 8px) 100%, 0% 100%);
+  }
+
+  .btn-vr:hover { background: #ff001f; }
+  .btn-vr:disabled { background: #333; color: #666; cursor: not-allowed; }
+
+  .btn-vr svg { width: 16px; height: 16px; fill: currentColor; }
+
+  /* Part label */
+  #part-label {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 12px;
+    color: var(--red);
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    background: rgba(8,8,9,0.8);
+    padding: 6px 14px;
+    border-left: 2px solid var(--red);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.3s;
+    z-index: 20;
+  }
+
+  /* Loading screen */
+  #loading {
+    position: absolute;
+    inset: 0;
+    background: var(--dark);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 24px;
+    z-index: 100;
+    transition: opacity 0.8s;
+  }
+
+  .loading-mark {
+    width: 60px; height: 60px;
+    background: var(--red);
+    clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+    animation: pulse 1.2s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(0.85); opacity: 0.6; }
+  }
+
+  .loading-text {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 12px;
+    color: var(--text-dim);
+    letter-spacing: 4px;
+    text-transform: uppercase;
+  }
+
+  .loading-bar {
+    width: 200px;
+    height: 1px;
+    background: #1a1a1f;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .loading-bar::after {
+    content: '';
+    position: absolute;
+    top: 0; left: -60%;
+    width: 60%;
+    height: 100%;
+    background: var(--red);
+    animation: slide 1.2s linear infinite;
+  }
+
+  @keyframes slide {
+    to { left: 100%; }
+  }
+
+  /* Scanline overlay */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,0,0,0.03) 2px,
+      rgba(0,0,0,0.03) 4px
+    );
+    pointer-events: none;
+    z-index: 50;
+  }
+
+  /* Corner decorations */
+  .corner {
+    position: absolute;
+    width: 20px; height: 20px;
+    z-index: 15;
+    pointer-events: none;
+  }
+  .corner-tl { top: 70px; left: 16px; border-top: 1px solid var(--red); border-left: 1px solid var(--red); }
+  .corner-tr { top: 70px; right: 16px; border-top: 1px solid var(--red); border-right: 1px solid var(--red); }
+  .corner-bl { bottom: 90px; left: 16px; border-bottom: 1px solid var(--red); border-left: 1px solid var(--red); }
+  .corner-br { bottom: 90px; right: 16px; border-bottom: 1px solid var(--red); border-right: 1px solid var(--red); }
+
+  #error-msg {
+    display: none;
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    background: var(--surface);
+    border: 1px solid var(--red-dim);
+    padding: 24px 32px;
+    text-align: center;
+    z-index: 200;
+    max-width: 400px;
+  }
+  #error-msg h3 { color: var(--red); font-size: 16px; letter-spacing: 2px; margin-bottom: 12px; }
+  #error-msg p { font-family: 'Share Tech Mono', monospace; font-size: 11px; color: var(--text-dim); line-height: 1.8; }
+  #error-msg code { color: var(--red); }
+</style>
+</head>
+<body>
+
+<div id="loading">
+  <div class="loading-mark"></div>
+  <div class="loading-text">Memuatkan model...</div>
+  <div class="loading-bar"></div>
+</div>
+
+<div id="error-msg">
+  <h3>⚠ FILE NOT FOUND</h3>
+  <p>Pastikan file <code>ducati_panigale_v4r.glb</code> berada dalam folder yang sama dengan <code>index.html</code> ini.<br><br>
+  Atau buka melalui local server:<br><code>python -m http.server 8080</code></p>
+</div>
+
+<header>
+  <div class="brand">
+    <div class="brand-mark"></div>
+    <div>
+      <div class="brand-name">Ducati</div>
+      <div class="brand-sub">3D · INTERACTIVE VIEWER</div>
+    </div>
+  </div>
+  <div class="header-right">
+    <div class="tag">WebGL 2.0</div>
+    <div class="tag">Three.js r128</div>
+  </div>
+</header>
+
+<div class="corner corner-tl"></div>
+<div class="corner corner-tr"></div>
+<div class="corner corner-bl"></div>
+<div class="corner corner-br"></div>
+
+<canvas id="canvas"></canvas>
+
+<div id="part-label">—</div>
+
+<div class="hud">
+  <div class="hud-left">
+    <div class="hud-title">Panigale <span>V4R</span></div>
+    <div class="hud-specs">
+      <span>998cc <b>V4</b></span>
+      <span><b>221</b> hp</span>
+      <span><b>172</b> kg</span>
+      <span>0–100 <b>2.8s</b></span>
+    </div>
+  </div>
+  <div class="hud-right">
+    <div class="controls-hint">
+      DRAG — putar<br>
+      SCROLL — zum<br>
+      HOVER — nama part
+    </div>
+    <button class="btn-vr" id="btn-vr" disabled>
+      <svg viewBox="0 0 24 24"><path d="M20.5 7h-17A1.5 1.5 0 002 8.5v7A1.5 1.5 0 003.5 17h4.6l1.7 2.4a.5.5 0 00.8 0l1.7-2.4h1.4l1.7 2.4a.5.5 0 00.8 0l1.7-2.4h2.6A1.5 1.5 0 0022 15.5v-7A1.5 1.5 0 0020.5 7zM9 13.5A1.5 1.5 0 117.5 12 1.5 1.5 0 019 13.5zm7.5 0A1.5 1.5 0 1115 12a1.5 1.5 0 011.5 1.5z"/></svg>
+      ENTER VR
+    </button>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+// ─── Renderer ───────────────────────────────────────────────
+const canvas = document.getElementById('canvas');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.2;
+renderer.outputEncoding = THREE.sRGBEncoding;
+renderer.setClearColor(0x080809);
+renderer.xr.enabled = true;
+
+function resize() {
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+}
+
+// ─── Scene & Camera ─────────────────────────────────────────
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x080809, 0.04);
+
+const camera = new THREE.PerspectiveCamera(45, 1, 0.01, 100);
+camera.position.set(3, 1.2, 3);
+resize();
+
+// ─── Lights ─────────────────────────────────────────────────
+const ambient = new THREE.AmbientLight(0xffffff, 0.4);
+scene.add(ambient);
+
+const key = new THREE.DirectionalLight(0xfff5f0, 2.5);
+key.position.set(5, 8, 5);
+key.castShadow = true;
+key.shadow.mapSize.set(2048, 2048);
+key.shadow.camera.near = 0.5;
+key.shadow.camera.far = 30;
+key.shadow.camera.left = -5;
+key.shadow.camera.right = 5;
+key.shadow.camera.top = 5;
+key.shadow.camera.bottom = -5;
+scene.add(key);
+
+const fill = new THREE.DirectionalLight(0xc0d8ff, 0.8);
+fill.position.set(-5, 3, -3);
+scene.add(fill);
+
+const rim = new THREE.PointLight(0xe8001d, 2, 8);
+rim.position.set(-3, 2, -2);
+scene.add(rim);
+
+const ground_light = new THREE.PointLight(0x1a0005, 1, 5);
+ground_light.position.set(0, -1, 0);
+scene.add(ground_light);
+
+// ─── Ground / Reflection plane ───────────────────────────────
+const groundGeo = new THREE.PlaneGeometry(20, 20);
+const groundMat = new THREE.MeshStandardMaterial({
+  color: 0x0a0a0d,
+  roughness: 0.1,
+  metalness: 0.8,
+});
+const ground = new THREE.Mesh(groundGeo, groundMat);
+ground.rotation.x = -Math.PI / 2;
+ground.position.y = -0.82;
+ground.receiveShadow = true;
+scene.add(ground);
+
+// Grid lines
+const grid = new THREE.GridHelper(20, 30, 0x1a0005, 0x120003);
+grid.position.y = -0.81;
+scene.add(grid);
+
+// ─── Load GLB ───────────────────────────────────────────────
+// GLTFLoader via CDN
+const loaderScript = document.createElement('script');
+loaderScript.src = 'https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js';
+document.head.appendChild(loaderScript);
+
+let model = null;
+let meshes = [];
+
+loaderScript.onload = () => {
+  const loader = new THREE.GLTFLoader();
+
+  loader.load(
+    'ducati_panigale_v4r.glb',
+    (gltf) => {
+      model = gltf.scene;
+
+      // Center & scale model
+      const box = new THREE.Box3().setFromObject(model);
+      const center = box.getCenter(new THREE.Vector3());
+      const size = box.getSize(new THREE.Vector3());
+      const maxDim = Math.max(size.x, size.y, size.z);
+      const scale = 2.5 / maxDim;
+
+      model.scale.setScalar(scale);
+      model.position.sub(center.multiplyScalar(scale));
+      model.position.y += 0.05;
+
+      // Enable shadows & collect meshes
+      model.traverse((child) => {
+        if (child.isMesh) {
+          child.castShadow = true;
+          child.receiveShadow = true;
+          meshes.push(child);
+          // Enhance materials
+          if (child.material) {
+            const mats = Array.isArray(child.material) ? child.material : [child.material];
+            mats.forEach(m => {
+              if (m.isMeshStandardMaterial) {
+                m.envMapIntensity = 1.5;
+              }
+            });
+          }
+        }
+      });
+
+      scene.add(model);
+
+      // Hide loading
+      const loading = document.getElementById('loading');
+      loading.style.opacity = '0';
+      setTimeout(() => loading.style.display = 'none', 800);
+
+      // Check VR
+      if (navigator.xr) {
+        navigator.xr.isSessionSupported('immersive-vr').then(supported => {
+          if (supported) {
+            const vrBtn = document.getElementById('btn-vr');
+            vrBtn.disabled = false;
+            vrBtn.addEventListener('click', enterVR);
+          }
+        });
+      }
+    },
+    (progress) => {
+      const pct = Math.round((progress.loaded / progress.total) * 100);
+      document.querySelector('.loading-text').textContent = `Memuatkan... ${pct}%`;
+    },
+    (error) => {
+      document.getElementById('loading').style.display = 'none';
+      document.getElementById('error-msg').style.display = 'block';
+      console.error(error);
+    }
+  );
+};
+
+// ─── Orbit Controls (manual) ─────────────────────────────────
+let isDragging = false;
+let prevX = 0, prevY = 0;
+let rotY = Math.PI / 4, rotX = 0.2;
+let targetRotY = rotY, targetRotX = rotX;
+let radius = 4.5, targetRadius = radius;
+let autoSpin = true;
+
+canvas.addEventListener('mousedown', e => {
+  isDragging = true;
+  autoSpin = false;
+  prevX = e.clientX;
+  prevY = e.clientY;
+});
+canvas.addEventListener('touchstart', e => {
+  isDragging = true;
+  autoSpin = false;
+  prevX = e.touches[0].clientX;
+  prevY = e.touches[0].clientY;
+}, { passive: true });
+
+window.addEventListener('mouseup', () => isDragging = false);
+window.addEventListener('touchend', () => isDragging = false);
+
+window.addEventListener('mousemove', e => {
+  if (!isDragging) return;
+  targetRotY += (e.clientX - prevX) * 0.006;
+  targetRotX += (e.clientY - prevY) * 0.004;
+  targetRotX = Math.max(-0.8, Math.min(0.8, targetRotX));
+  prevX = e.clientX;
+  prevY = e.clientY;
+});
+window.addEventListener('touchmove', e => {
+  if (!isDragging) return;
+  targetRotY += (e.touches[0].clientX - prevX) * 0.006;
+  targetRotX += (e.touches[0].clientY - prevY) * 0.004;
+  targetRotX = Math.max(-0.8, Math.min(0.8, targetRotX));
+  prevX = e.touches[0].clientX;
+  prevY = e.touches[0].clientY;
+}, { passive: true });
+
+canvas.addEventListener('wheel', e => {
+  targetRadius = Math.max(1.5, Math.min(8, targetRadius + e.deltaY * 0.005));
+  e.preventDefault();
+}, { passive: false });
+
+// Pinch zoom (touch)
+let lastPinch = 0;
+canvas.addEventListener('touchstart', e => {
+  if (e.touches.length === 2) lastPinch = Math.hypot(
+    e.touches[0].clientX - e.touches[1].clientX,
+    e.touches[0].clientY - e.touches[1].clientY
+  );
+}, { passive: true });
+canvas.addEventListener('touchmove', e => {
+  if (e.touches.length === 2) {
+    const dist = Math.hypot(
+      e.touches[0].clientX - e.touches[1].clientX,
+      e.touches[0].clientY - e.touches[1].clientY
+    );
+    targetRadius = Math.max(1.5, Math.min(8, targetRadius - (dist - lastPinch) * 0.01));
+    lastPinch = dist;
+  }
+}, { passive: true });
+
+// ─── Raycasting (hover label) ────────────────────────────────
+const raycaster = new THREE.Raycaster();
+const mouse = new THREE.Vector2();
+const partLabel = document.getElementById('part-label');
+
+window.addEventListener('mousemove', e => {
+  mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+  mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+});
+
+function checkHover() {
+  if (!meshes.length) return;
+  raycaster.setFromCamera(mouse, camera);
+  const hits = raycaster.intersectObjects(meshes);
+  if (hits.length > 0) {
+    const name = hits[0].object.name || hits[0].object.parent?.name || 'Part';
+    const clean = name.replace(/_/g, ' ').replace(/\d+/g, '').trim();
+    if (clean.length > 1) {
+      partLabel.textContent = clean.toUpperCase();
+      partLabel.style.opacity = '1';
+    }
+    canvas.style.cursor = 'crosshair';
+  } else {
+    partLabel.style.opacity = '0';
+    canvas.style.cursor = isDragging ? 'grabbing' : 'grab';
+  }
+}
+
+// ─── VR ──────────────────────────────────────────────────────
+function enterVR() {
+  navigator.xr.requestSession('immersive-vr', {
+    optionalFeatures: ['local-floor', 'bounded-floor', 'hand-tracking']
+  }).then(session => {
+    renderer.xr.setSession(session);
+    document.getElementById('btn-vr').textContent = 'EXIT VR';
+    session.addEventListener('end', () => {
+      document.getElementById('btn-vr').textContent = 'ENTER VR';
+    });
+  });
+}
+
+// ─── Animate ─────────────────────────────────────────────────
+const clock = new THREE.Clock();
+
+function animate() {
+  renderer.setAnimationLoop(loop);
+}
+
+function loop() {
+  const t = clock.getElapsedTime();
+
+  // Auto spin
+  if (autoSpin) targetRotY += 0.002;
+
+  // Smooth lerp
+  rotY += (targetRotY - rotY) * 0.07;
+  rotX += (targetRotX - rotX) * 0.07;
+  radius += (targetRadius - radius) * 0.07;
+
+  // Orbit camera
+  camera.position.x = radius * Math.sin(rotY) * Math.cos(rotX);
+  camera.position.y = radius * Math.sin(rotX) + 0.5;
+  camera.position.z = radius * Math.cos(rotY) * Math.cos(rotX);
+  camera.lookAt(0, 0.2, 0);
+
+  // Rim light animation
+  rim.position.x = Math.sin(t * 0.4) * 4;
+  rim.position.z = Math.cos(t * 0.4) * 4;
+
+  checkHover();
+  renderer.render(scene, camera);
+}
+
+window.addEventListener('resize', resize);
+animate();
+</script>
+</body>
+</html>
